@@ -1,0 +1,13 @@
+{
+  "name": "r34-sorter",
+  "version": "0.1.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/hash-slinging-slasher/r34-sorter.git"
+  },
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/hash-slinging-slasher/r34-sorter/issues"
+  },
+  "homepage": "https://github.com/hash-slinging-slasher/r34-sorter#readme"
+}
