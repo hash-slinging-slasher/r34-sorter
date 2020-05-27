@@ -1,0 +1,24 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "type": "node",
+      "request": "launch",
+      "name": "Launch Program",
+      "program": "${file}",
+      "skipFiles": [
+        "<node_internals>/**"
+      ],
+      "args": [
+        "20",
+        "large_breasts",
+        "looking_at_viewer",
+        "-webm",
+        "-3d",
+        "-animated",
+        "-beastiality"
+      ]
+    }
+  ],
+  "compounds": []
+}
