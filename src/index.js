@@ -21,7 +21,7 @@ axiosRetry(axios, {
   retries: 4,
   retryDelay: function(retryCount) {
     let randomMs = Math.floor(Math.random() * 1000);
-    return 2**retryCount + randomMs
+    return Math.pow(2, retryCount) + randomMs
   }
 });
 
