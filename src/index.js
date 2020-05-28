@@ -54,7 +54,7 @@ let tags = sanitizeTags(process.argv.slice(3));
    */
   let posts = goodPages.reduce((acc, result) => acc.concat(result.value()), []);
   // TODO Support for "max number of posts" in CLI
-  let topPosts = posts.sort((a, b) => b.score - a.score).slice(0);
+  let topPosts = posts.sort((a, b) => b.score - a.score).slice(0, 100);
 
   console.log('Fetching top posts...');
   await Promise.allSettled(topPosts.map((p, i) => (
