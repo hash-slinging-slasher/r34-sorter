@@ -42,36 +42,41 @@ if (!Number.isInteger(pageCount)) {
 }
 
 // Parse tags from CLI
-let tags = parseTags(process.argv.slice(3));
+let tags = sanitizeTags(process.argv.slice(3));
 
-// Request all pages.
-// If a page request rejects, then log it.
-// If a page request fulfills, then extracting the posts and map them into a score
-// and link
-let pagePromises = getPages();
+(async() => {
+  // Request all pages
+  console.log('Fetching pages...');
+  let pages = await Promise.allSettled(getPages());
+  let goodPages = pages.filter(result => result.isFulfilled());
+  /**
+   * @type {PostMeta[]}
+   */
+  let posts = goodPages.reduce((acc, result) => acc.concat(result.value()), []);
+  // TODO Support for "max number of posts" in CLI
+  let topPosts = posts.sort((a, b) => b.score - a.score).slice(0);
 
-Promise.allSettled(pagePromises)
-  .filter(result => result.isFulfilled())
-  .reduce((simplePosts, currResult) => simplePosts.concat(currResult.value()), [])
-  .then(simplePosts => {
-    // Sort them again, and take top 100 posts
-    /**
-     * @type {{href:string, score:number}[]}
-     */
-    let topPosts = simplePosts.sort((a, b) => b.score - a.score).slice(0, 100);
-
-    Promise.allSettled(topPosts.map((p, i) => (
-      Promise.resolve(axios(p.href)).reflect()
-        .then(result => {
-          if (result.isFulfilled()) {
-            getPost(result.value().data, p, i);
-          } else {
-            // TODO Proper error/logging handling here
-            console.warn(`[WARN] POST: ${p.href}`);
-          }
-        })
-    ))).then('Finished');
+  console.log('Fetching top posts...');
+  await Promise.allSettled(topPosts.map((p, i) => (
+    Promise.resolve(axios(p.href))
+      .reflect()
+      .then(postResult => {
+        if (postResult.isFulfilled()) {
+          return fetchImage(postResult.value().data, p, i);
+        } else {
+          // TOOD Proper error logging/handling here
+          console.warn(`[WARN] POST: Failed to fetch ${p.href}`);
+          return Promise.resolve();
+        }
+      })
+  ))).each(imageResult => {
+    if (imageResult.isRejected()) {
+      console.warn(`[WARN] IMAGE: Failed to fetch an image\n${imageResult.reason()}`);
+    }
   });
+
+  console.log('Done');
+})();
 
 function getPages() {
   let promises = [];
@@ -81,12 +86,14 @@ function getPages() {
     let pageUrl = `${BASE_URL}/index.php?page=post&s=list&pid=${pid}&tags=${tags.join('+')}`;
 
     let pagePromise = Promise.resolve(axios(pageUrl))
-      .reflect().then(result => {
+      .reflect()
+      .then(result => {
         if (result.isFulfilled()) {
-          return parsePage(result.value().data);
+          return parseSearchPage(result.value().data);
         } else {
           // TODO Proper error/logging handling here
-          console.warn(`[WARN] PAGE: ${pageUrl}`);
+          console.warn(`[WARN] PAGE: Failed to fetch ${pageUrl}`);
+          return Promise.resolve();
         }
       });
 
@@ -96,7 +103,13 @@ function getPages() {
   return promises;
 }
 
-function parsePage(rawHtml) {
+/**
+ * Parses a search page and maps all of the results to a simplified object that
+ * outlines the each result's link and it's score.
+ * @param {string} rawHtml HTML of a search page
+ * @returns {PostMeta[]} A list of the simplified objects of each result
+ */
+function parseSearchPage(rawHtml) {
   let $ = cheerio.load(rawHtml);
   let anchorTags = $('span.thumb > a');
   let imgTags = $('span.thumb > a > img');
@@ -108,7 +121,7 @@ function parsePage(rawHtml) {
     // ID can be used to reconstruct link if missing
     let postId = anchorTags[i].attribs.id;
     if (postId == null) {
-      console.warn('[WARN] IMAG: Found a post item without an ID...');
+      console.warn('[WARN] IMAGE: Found a post item without an ID...');
       continue;
     }
 
@@ -116,6 +129,7 @@ function parsePage(rawHtml) {
     let href = anchorTags[i].attribs.href;
     if (href == null) {
       // Manually reconstruct the link
+      // TODO What if there is no post id?
       href = `${BASE_URL}/index.php?page=post&s=view&id=${postId}`
     } else {
       if (href.startsWith('/')) {
@@ -128,6 +142,7 @@ function parsePage(rawHtml) {
     // Parsing score
     let title = imgTags[i].attribs.title;
     let titleSplit = title.split(/\s+/);
+    // TODO What if there is no score?
     let scoreString = titleSplit.find(s => s.match(/^score:\d+$/));
     let score = Number(scoreString.split(':')[1]);
     if (Number.isNaN(score)) {
@@ -147,7 +162,14 @@ function parsePage(rawHtml) {
   return simplePosts;
 }
 
-async function getPost(rawHtml, postMeta, index) {
+/**
+ * Fetches the image from a post's HTML source.
+ * @param {string} rawHtml HTML of a post
+ * @param {PostMeta} postMeta some simplified meta data for a post
+ * @param {number} index Used for file naming
+ * @returns {Promise<void>} A promise that doesn't resolve to anything
+ */
+async function fetchImage(rawHtml, postMeta, index) {
   let $ = cheerio.load(rawHtml);
   // TODO Support for videos
   let imgTag = $('img#image');
@@ -157,6 +179,7 @@ async function getPost(rawHtml, postMeta, index) {
   let head = await axios.head(imgLink);
   let ext = head.headers['content-type'].split('/')[1];
 
+  // TODO What if there's a network error when fetching the image?
   // Fetch the image and pipe it to a file
   let postId = /id=(\d+)/.exec(postMeta.href)[1];
   let fileName = `${index}-${postId}.${ext}`;
@@ -173,6 +196,12 @@ async function getPost(rawHtml, postMeta, index) {
  * @param {string[]} args Command line arguments
  * @returns {string[]}
  */
-function parseTags(args) {
+function sanitizeTags(args) {
   return args.map(arg => arg.replace(/\s+/gi, '_'));
 }
+
+/**
+ * @typedef PostMeta
+ * @prop {string} href Link to the post
+ * @prop {number} score Score of the post
+ */
